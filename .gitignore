@@ -1,5 +1,13 @@
-node_modules
-# Keep environment variables out of version control
+# Secrets
 .env
+.env.*
+!.env.example
 
-/generated/prisma
+# Local/dev artifacts
+node_modules/
+.next/
+dist/
+venv/
+__pycache__/
+.expo/
+*.tsbuildinfo

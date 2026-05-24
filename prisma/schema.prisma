@@ -1,13 +1,339 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+/// Roles applicatifs pour le controle d'acces RBAC.
+enum Role {
+  ELEVE
+  ENSEIGNANT
+  MINISTERE
+  ADMIN
+}
+
+/// Niveaux scolaires officiels de l'enseignement secondaire.
+enum Niveau {
+  SIXIEME
+  CINQUIEME
+  QUATRIEME
+  TROISIEME
+  SECONDE
+  PREMIERE
+  TERMINALE
+}
+
+/// Series d'orientation pour le secondaire.
+enum Serie {
+  A
+  B
+  C
+  D
+  F1
+  F2
+  F3
+  F4
+}
+
+/// Type administratif d'etablissement.
+enum EtablissementType {
+  PUBLIC
+  PRIVE
+}
+
+/// Etat de validation d'une epreuve soumise.
+enum StatutEpreuve {
+  EN_ATTENTE
+  VALIDEE
+  REJETEE
+}
+
+/// Utilisateur principal de la plateforme.
+model User {
+  id           String         @id @default(cuid())
+  nom          String
+  prenom       String
+  email        String         @unique
+  password     String
+  role         Role
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+  eleve        Eleve?
+  enseignant   Enseignant?
+
+  @@index([role])
+}
+
+/// Token de renouvellement de session.
+model RefreshToken {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Etablissement scolaire de rattachement.
+model Etablissement {
+  id          String       @id @default(cuid())
+  nom         String
+  departement String
+  commune     String
+  type        EtablissementType
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  eleves      Eleve[]
+  enseignants Enseignant[]
+  classes     Classe[]
+
+  @@unique([nom, commune])
+  @@index([departement, commune])
+}
+
+/// Profil metier d'un eleve.
+model Eleve {
+  id               String            @id @default(cuid())
+  userId           String            @unique
+  niveau           Niveau
+  serie            Serie
+  etablissementId  String?
+  score            Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  etablissement    Etablissement?    @relation(fields: [etablissementId], references: [id], onDelete: SetNull)
+  progressions     Progression[]
+  tentatives       Tentative[]
+  iaConversations  IAConversation[]
+  iaExercices      IAExerciceLog[]
+  classes          ClasseEleve[]
+
+  @@index([niveau, serie])
+  @@index([etablissementId])
+}
+
+/// Profil metier d'un enseignant.
+model Enseignant {
+  id                    String                 @id @default(cuid())
+  userId                String                 @unique
+  etablissementId       String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  etablissement         Etablissement?         @relation(fields: [etablissementId], references: [id], onDelete: SetNull)
+  matieres              EnseignantMatiere[]
+  progressionsProgramme ProgressionProgramme[]
+  epreuves              Epreuve[]              @relation("EpreuvesSoumises")
+  classes               Classe[]
+
+  @@index([etablissementId])
+}
+
+/// Classe pedagogique rattachee a un enseignant principal.
+model Classe {
+  id             String       @id @default(cuid())
+  nom            String
+  niveau         Niveau
+  serie          Serie?
+  etablissementId String?
+  enseignantId   String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  etablissement  Etablissement? @relation(fields: [etablissementId], references: [id], onDelete: SetNull)
+  enseignant     Enseignant   @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  eleves         ClasseEleve[]
+
+  @@unique([nom, enseignantId])
+  @@index([niveau, serie])
+  @@index([etablissementId])
+}
+
+/// Table de liaison classe <-> eleve.
+model ClasseEleve {
+  id        String   @id @default(cuid())
+  classeId  String
+  eleveId   String
+  createdAt DateTime @default(now())
+  classe    Classe   @relation(fields: [classeId], references: [id], onDelete: Cascade)
+  eleve     Eleve    @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+
+  @@unique([classeId, eleveId])
+  @@index([eleveId])
+}
+
+/// Matiere scolaire officielle.
+model Matiere {
+  id               String             @id @default(cuid())
+  nom              String             @unique
+  code             String             @unique
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  chapitres        Chapitre[]
+  enseignants      EnseignantMatiere[]
+  progressions     Progression[]
+  epreuves         Epreuve[]
+  iaConversations  IAConversation[]
+  iaExercices      IAExerciceLog[]
+}
+
+/// Table de liaison enseignant <-> matiere.
+model EnseignantMatiere {
+  id           String     @id @default(cuid())
+  enseignantId String
+  matiereId    String
+  enseignant   Enseignant @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  matiere      Matiere    @relation(fields: [matiereId], references: [id], onDelete: Cascade)
+
+  @@unique([enseignantId, matiereId])
+  @@index([matiereId])
+}
+
+/// Unite pedagogique d'une matiere a un niveau.
+model Chapitre {
+  id                   String                @id @default(cuid())
+  titre                String
+  ordre                Int
+  niveau               Niveau
+  matiereId            String
+  contenu              String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  matiere              Matiere               @relation(fields: [matiereId], references: [id], onDelete: Cascade)
+  exercices            Exercice[]
+  progressionsProgramme ProgressionProgramme[]
+
+  @@unique([matiereId, niveau, ordre])
+  @@index([niveau])
+}
+
+/// Exercice associe a un chapitre.
+model Exercice {
+  id         String      @id @default(cuid())
+  enonce     String
+  correction String
+  difficulte Int
+  chapitreId String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  chapitre   Chapitre    @relation(fields: [chapitreId], references: [id], onDelete: Cascade)
+  tentatives Tentative[]
+
+  @@index([chapitreId, difficulte])
+}
+
+/// Progression globale d'un eleve dans une matiere.
+model Progression {
+  id         String   @id @default(cuid())
+  eleveId    String
+  matiereId  String
+  scoreGlobal Int
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  eleve      Eleve    @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  matiere    Matiere  @relation(fields: [matiereId], references: [id], onDelete: Cascade)
+
+  @@unique([eleveId, matiereId])
+  @@index([matiereId])
+}
+
+/// Tentative de reponse d'un eleve a un exercice.
+model Tentative {
+  id         String    @id @default(cuid())
+  eleveId    String
+  exerciceId String
+  reponse    String
+  score      Int?
+  feedback   String?
+  createdAt  DateTime  @default(now())
+  eleve      Eleve     @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  exercice   Exercice  @relation(fields: [exerciceId], references: [id], onDelete: Cascade)
+
+  @@index([eleveId, createdAt])
+  @@index([exerciceId])
+}
+
+/// Suivi d'avancement enseignant sur le programme.
+model ProgressionProgramme {
+  id           String      @id @default(cuid())
+  enseignantId String
+  chapitreId   String
+  traite       Boolean     @default(false)
+  dateTrait    DateTime?
+  createdAt    DateTime    @default(now())
+  enseignant   Enseignant  @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+  chapitre     Chapitre    @relation(fields: [chapitreId], references: [id], onDelete: Cascade)
+
+  @@unique([enseignantId, chapitreId])
+  @@index([chapitreId])
+}
+
+/// Epreuve soumise par un enseignant et validee par le ministere.
+model Epreuve {
+  id            String        @id @default(cuid())
+  titre         String
+  contenu       String
+  niveau        Niveau
+  serie         Serie
+  matiereId     String
+  enseignantId  String?
+  statut        StatutEpreuve @default(EN_ATTENTE)
+  scoreQualite  Int?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  matiere       Matiere       @relation(fields: [matiereId], references: [id], onDelete: Cascade)
+  enseignant    Enseignant?   @relation("EpreuvesSoumises", fields: [enseignantId], references: [id], onDelete: SetNull)
+
+  @@index([statut, createdAt])
+  @@index([niveau, serie, matiereId])
+}
+
+/// Session d'echange IA rattachee a un eleve.
+model IAConversation {
+  id         String      @id @default(cuid())
+  eleveId    String
+  matiereId  String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  eleve      Eleve       @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  matiere    Matiere?    @relation(fields: [matiereId], references: [id], onDelete: SetNull)
+  messages   IAMessage[]
+
+  @@index([eleveId, createdAt])
+}
+
+/// Message historise d'une conversation IA.
+model IAMessage {
+  id              String          @id @default(cuid())
+  conversationId  String
+  role            String
+  content         String
+  createdAt       DateTime        @default(now())
+  conversation    IAConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+/// Trace d'exercice genere via service IA.
+model IAExerciceLog {
+  id          String    @id @default(cuid())
+  eleveId     String
+  matiereId   String?
+  niveau      Niveau
+  serie       Serie
+  difficulte  Int
+  enonce      String
+  correction  String
+  createdAt   DateTime  @default(now())
+  eleve       Eleve     @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  matiere     Matiere?  @relation(fields: [matiereId], references: [id], onDelete: SetNull)
+
+  @@index([eleveId, createdAt])
 }
