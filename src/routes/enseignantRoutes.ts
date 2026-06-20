@@ -1,8 +1,11 @@
 import { Role } from "@prisma/client";
 import { Router } from "express";
 import {
+  genererEpreuve,
   getClasses,
   getEpreuves,
+  getEpreuvesGenerees,
+  getEpreuvesImportees,
   postProgrammeAvancement,
   soumettreEpreuve
 } from "../controllers/enseignantController";
@@ -12,6 +15,7 @@ import { validate } from "../middlewares/validate";
 import { asyncHandler } from "../utils/asyncHandler";
 import {
   enseignantParamsSchema,
+  genererEpreuveSchema,
   progressionProgrammeSchema,
   soumettreEpreuveSchema
 } from "../validators/enseignantSchemas";
@@ -54,6 +58,17 @@ enseignantRouter.post(
 );
 
 /**
+ * @route POST /enseignant/epreuve/generer
+ * @description Genere une epreuve via IA puis la persiste.
+ */
+enseignantRouter.post(
+  "/epreuve/generer",
+  requireRoles(Role.ENSEIGNANT),
+  validate("body", genererEpreuveSchema),
+  asyncHandler(genererEpreuve)
+);
+
+/**
  * @route GET /enseignant/epreuves
  * @description Liste les epreuves soumises par l'enseignant connecte.
  */
@@ -61,6 +76,26 @@ enseignantRouter.get(
   "/epreuves",
   requireRoles(Role.ENSEIGNANT, Role.MINISTERE, Role.ADMIN),
   asyncHandler(getEpreuves)
+);
+
+/**
+ * @route GET /enseignant/epreuves/importees
+ * @description Liste les epreuves importees de l'enseignant connecte.
+ */
+enseignantRouter.get(
+  "/epreuves/importees",
+  requireRoles(Role.ENSEIGNANT),
+  asyncHandler(getEpreuvesImportees)
+);
+
+/**
+ * @route GET /enseignant/epreuves/generees
+ * @description Liste les epreuves generees de l'enseignant connecte.
+ */
+enseignantRouter.get(
+  "/epreuves/generees",
+  requireRoles(Role.ENSEIGNANT),
+  asyncHandler(getEpreuvesGenerees)
 );
 
 export { enseignantRouter };

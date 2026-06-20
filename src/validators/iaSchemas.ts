@@ -38,4 +38,7 @@ export interface IAExercicePayload {
   serie: Serie;
   score: number;
   difficulte: number;
+  chapitres?: string[];
+  type?: string;
+  duree?: number;
 }

@@ -132,6 +132,8 @@ model Enseignant {
   matieres              EnseignantMatiere[]
   progressionsProgramme ProgressionProgramme[]
   epreuves              Epreuve[]              @relation("EpreuvesSoumises")
+  epreuvesImportees     EpreuveImportee[]
+  epreuvesGenerees      EpreuveGeneree[]
   classes               Classe[]
 
   @@index([etablissementId])
@@ -293,6 +295,43 @@ model Epreuve {
 
   @@index([statut, createdAt])
   @@index([niveau, serie, matiereId])
+}
+
+/// Epreuve importee par un enseignant depuis une source externe.
+model EpreuveImportee {
+  id           String      @id @default(cuid())
+  enseignantId String
+  titre        String
+  matiere      String
+  classe       Niveau
+  serie        Serie
+  contenu      String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  enseignant   Enseignant  @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+
+  @@index([enseignantId, createdAt])
+}
+
+/// Epreuve generee par l'IA pour un enseignant.
+model EpreuveGeneree {
+  id           String      @id @default(cuid())
+  enseignantId String
+  matiere      String
+  classe       Niveau
+  serie        Serie
+  chapitres    String[]
+  difficulte   Int
+  type         String
+  duree        Int
+  enonce       String
+  correction   String
+  conceptsCles String[]    @default([])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  enseignant   Enseignant  @relation(fields: [enseignantId], references: [id], onDelete: Cascade)
+
+  @@index([enseignantId, createdAt])
 }
 
 /// Session d'echange IA rattachee a un eleve.

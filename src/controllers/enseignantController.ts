@@ -2,8 +2,10 @@ import type { Request, Response } from "express";
 import { Role, StatutEpreuve } from "@prisma/client";
 import { AppError } from "../errors/AppError";
 import { prisma } from "../lib/prisma";
+import { proxyExerciceToIA } from "../services/iaService";
 import type {
   EnseignantParams,
+  GenererEpreuveInput,
   ProgressionProgrammeInput,
   SoumettreEpreuveInput
 } from "../validators/enseignantSchemas";
@@ -21,6 +23,19 @@ const assertEnseignantScope = async (requesterUserId: string, role: Role, enseig
   if (!enseignant || enseignant.userId !== requesterUserId) {
     throw new AppError("Forbidden", 403);
   }
+};
+
+const getConnectedEnseignant = async (request: Request<any, any, any, any>) => {
+  if (!request.user) {
+    throw new AppError("Authentication required", 401);
+  }
+
+  const enseignant = await prisma.enseignant.findUnique({ where: { userId: request.user.userId } });
+  if (!enseignant) {
+    throw new AppError("Enseignant profile not found", 404);
+  }
+
+  return enseignant;
 };
 
 export const getClasses = async (
@@ -57,14 +72,7 @@ export const postProgrammeAvancement = async (
   req: Request<unknown, unknown, ProgressionProgrammeInput>,
   res: Response
 ): Promise<void> => {
-  if (!req.user) {
-    throw new AppError("Authentication required", 401);
-  }
-
-  const enseignant = await prisma.enseignant.findUnique({ where: { userId: req.user.userId } });
-  if (!enseignant) {
-    throw new AppError("Enseignant profile not found", 404);
-  }
+  const enseignant = await getConnectedEnseignant(req);
 
   const progression = await prisma.progressionProgramme.upsert({
     where: {
@@ -92,14 +100,7 @@ export const soumettreEpreuve = async (
   req: Request<unknown, unknown, SoumettreEpreuveInput>,
   res: Response
 ): Promise<void> => {
-  if (!req.user) {
-    throw new AppError("Authentication required", 401);
-  }
-
-  const enseignant = await prisma.enseignant.findUnique({ where: { userId: req.user.userId } });
-  if (!enseignant) {
-    throw new AppError("Enseignant profile not found", 404);
-  }
+  const enseignant = await getConnectedEnseignant(req);
 
   const epreuve = await prisma.epreuve.create({
     data: {
@@ -115,6 +116,64 @@ export const soumettreEpreuve = async (
   });
 
   res.status(201).json(epreuve);
+};
+
+export const genererEpreuve = async (
+  req: Request<unknown, unknown, GenererEpreuveInput>,
+  res: Response
+): Promise<void> => {
+  const enseignant = await getConnectedEnseignant(req);
+
+  const iaResponse = await proxyExerciceToIA({
+    matiere: req.body.matiere,
+    niveau: req.body.classe,
+    serie: req.body.serie,
+    score: 50,
+    difficulte: req.body.difficulte,
+    chapitres: req.body.chapitres,
+    type: req.body.type,
+    duree: req.body.duree
+  });
+
+  const epreuveGeneree = await prisma.epreuveGeneree.create({
+    data: {
+      enseignantId: enseignant.id,
+      matiere: req.body.matiere,
+      classe: req.body.classe,
+      serie: req.body.serie,
+      chapitres: req.body.chapitres,
+      difficulte: iaResponse.difficulte,
+      type: req.body.type,
+      duree: req.body.duree,
+      enonce: iaResponse.enonce,
+      correction: iaResponse.correction,
+      conceptsCles: iaResponse.concepts_cles ?? []
+    }
+  });
+
+  res.status(201).json(epreuveGeneree);
+};
+
+export const getEpreuvesImportees = async (req: Request, res: Response): Promise<void> => {
+  const enseignant = await getConnectedEnseignant(req);
+
+  const epreuvesImportees = await prisma.epreuveImportee.findMany({
+    where: { enseignantId: enseignant.id },
+    orderBy: { createdAt: "desc" }
+  });
+
+  res.status(200).json({ epreuvesImportees });
+};
+
+export const getEpreuvesGenerees = async (req: Request, res: Response): Promise<void> => {
+  const enseignant = await getConnectedEnseignant(req);
+
+  const epreuvesGenerees = await prisma.epreuveGeneree.findMany({
+    where: { enseignantId: enseignant.id },
+    orderBy: { createdAt: "desc" }
+  });
+
+  res.status(200).json({ epreuvesGenerees });
 };
 
 export const getEpreuves = async (req: Request, res: Response): Promise<void> => {
